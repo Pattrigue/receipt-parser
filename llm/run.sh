@@ -37,8 +37,8 @@ docker run -d --rm --name "$CONTAINER_NAME" --gpus all \
   -v "${OCR_TXT_HOST}:/work/ocr.txt:ro" \
   "${LLM_IMAGE}" >/dev/null
 
-echo "==> Starting Ollama..."
-for _ in $(seq 1 120); do
+echo "==> Starting Ollama (cold start may take ~1-2 minutes)..."
+for _ in $(seq 1 600); do
   if docker exec "$CONTAINER_NAME" ollama list >/dev/null 2>&1; then
     break
   fi
@@ -48,7 +48,7 @@ docker exec "$CONTAINER_NAME" ollama list >/dev/null 2>&1 || { echo "Ollama not 
 echo "==> Ollama ready"
 
 # Pull model if missing (cached in volume)
-if ! docker exec "$CONTAINER_NAME" ollama list | awk '{print $1}' | grep -qx "$OLLAMA_MODEL"; then
+if ! docker exec "$CONTAINER_NAME" ollama show "$OLLAMA_MODEL" >/dev/null 2>&1; then
   echo "==> Pulling LLM model (first run only): $OLLAMA_MODEL"
   docker exec -it "$CONTAINER_NAME" ollama pull "$OLLAMA_MODEL"
   echo "==> Model pulled"
