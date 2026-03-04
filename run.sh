@@ -1,34 +1,52 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OCR_IMAGE="${OCR_IMAGE:-deepseek-ocr2:latest}"
+LLM_SCRIPT="${LLM_SCRIPT:-$PWD/llm/run.sh}"
 
-IMAGE="${IMAGE:-deepseek-ocr2:latest}"
-INPUT_DIR="${INPUT_DIR:-$ROOT/input}"
-OUTPUT_DIR="${OUTPUT_DIR:-$ROOT/output}"
-CACHE_DIR="${CACHE_DIR:-$ROOT/.cache}"
-
-# If user provided an argument, use it. Otherwise, use demo image if it exists
-if [[ $# -ge 1 ]]; then
-  IMG="$1"
-else
-  IMG="$INPUT_DIR/receipt.jpg"
-  if [[ ! -f "$IMG" ]]; then
-    echo "No input image provided and demo image not found at: $IMG" >&2
-    echo "Usage: ./run.sh path/to/receipt.jpg" >&2
-    echo "Tip: put a demo image at $INPUT_DIR/receipt.jpg to run without arguments." >&2
-    exit 2
-  fi
+if [[ $# -lt 1 ]]; then
+  echo "Usage: ./run.sh path/to/receipt.jpg" >&2
+  exit 2
 fi
 
-mkdir -p "$OUTPUT_DIR" "$CACHE_DIR"
+IMG_HOST="$(realpath "$1")"
+if [[ ! -f "$IMG_HOST" ]]; then
+  echo "Input image not found: $IMG_HOST" >&2
+  exit 2
+fi
 
-# Make IMG absolute for mounting
-IMG_ABS="$(realpath "$IMG")"
+if [[ ! -x "$LLM_SCRIPT" ]]; then
+  echo "LLM runner not executable: $LLM_SCRIPT" >&2
+  echo "Run: chmod +x llm/run.sh" >&2
+  exit 2
+fi
 
-exec docker run --rm --gpus all \
-  -v "$IMG_ABS:/input/receipt.jpg:ro" \
-  -v "$(realpath "$OUTPUT_DIR"):/output" \
-  -v "$(realpath "$CACHE_DIR"):/cache" \
-  "$IMAGE" \
-  /input/receipt.jpg /output
+WORKDIR="$(mktemp -d)"
+cleanup() { rm -rf "$WORKDIR" >/dev/null 2>&1 || true; }
+trap cleanup EXIT
+
+mkdir -p "$PWD/.cache" "$PWD/output"
+
+OUT_JSON="$PWD/output/result.json"
+
+echo "==> Running OCR (may download model on first run)..."
+docker run --rm --gpus all \
+  -v "$IMG_HOST:/input/receipt.jpg:ro" \
+  -v "$WORKDIR:/work" \
+  -v "$PWD/.cache:/cache" \
+  "$OCR_IMAGE" \
+  /input/receipt.jpg /work --quiet >/dev/null
+echo "==> OCR done"
+
+OCR_TXT="$WORKDIR/ocr.txt"
+if [[ ! -s "$OCR_TXT" ]]; then
+  echo "OCR failed: $OCR_TXT is missing/empty" >&2
+  exit 1
+fi
+
+echo "==> Running LLM..."
+"$LLM_SCRIPT" "$OCR_TXT" "$OUT_JSON" >/dev/null
+echo "==> LLM done: $OUT_JSON"
+
+cat "$OUT_JSON"
+echo
