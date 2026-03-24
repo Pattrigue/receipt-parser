@@ -94,10 +94,10 @@ def main() -> None:
     parsed = json.loads(out_text)
     final = json.dumps(parsed, ensure_ascii=False)
 
-    if args.out:
-        Path(args.out).write_text(final + "\n", encoding="utf-8")
-    sys.stdout.write(final + "\n")
-
+    output_path = args.out
+    if output_path:
+        Path(output_path).write_text(final + "\n", encoding="utf-8")
+    
 
 if __name__ == "__main__":
     main()
