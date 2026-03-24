@@ -50,5 +50,4 @@ echo "==> Running LLM..."
 "$LLM_SCRIPT" "$OCR_TXT" "$OUT_JSON" >/dev/null
 echo "==> LLM done: $OUT_JSON"
 
-cat "$OUT_JSON"
 echo
