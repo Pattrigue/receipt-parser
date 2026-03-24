@@ -38,10 +38,9 @@ Rules:
 - Output only JSON (no markdown / no code fences).
 - Do not invent items.
 - quantity is a number (use 1 if missing).
-- price is the final price for that item line.
-- discount is optional; if present it must be a negative number and applies to that item.
+- price is the FINAL LINE TOTAL for that entry (i.e. the total amount for that line as printed on the receipt; not unit price).
+- discount is optional; if present it must be a positive number and is the TOTAL discount associated with that same line.
 """
-
 
 def post_json(url: str, payload: dict[str, Any], timeout_s: float) -> dict[str, Any]:
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
