@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
 OCR_IMAGE="${OCR_IMAGE:-deepseek-ocr2:latest}"
-LLM_SCRIPT="${LLM_SCRIPT:-$PWD/llm/run.sh}"
+LLM_SCRIPT="${LLM_SCRIPT:-$SCRIPT_DIR/llm/run.sh}"
 
 if [[ $# -lt 1 ]]; then
   echo "Usage: ./run.sh path/to/receipt.jpg" >&2
@@ -17,7 +19,7 @@ fi
 
 if [[ ! -x "$LLM_SCRIPT" ]]; then
   echo "LLM runner not executable: $LLM_SCRIPT" >&2
-  echo "Run: chmod +x llm/run.sh" >&2
+  echo "Run: chmod +x \"$LLM_SCRIPT\"" >&2
   exit 2
 fi
 
@@ -25,15 +27,15 @@ WORKDIR="$(mktemp -d)"
 cleanup() { rm -rf "$WORKDIR" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
-mkdir -p "$PWD/.cache" "$PWD/output"
+mkdir -p "$SCRIPT_DIR/.cache" "$SCRIPT_DIR/output"
 
-OUT_JSON="$PWD/output/result.json"
+OUT_JSON="$SCRIPT_DIR/output/result.json"
 
 echo "==> Running OCR (may download model on first run)..."
 docker run --rm --gpus all \
   -v "$IMG_HOST:/input/receipt.jpg:ro" \
   -v "$WORKDIR:/work" \
-  -v "$PWD/.cache:/cache" \
+  -v "$SCRIPT_DIR/.cache:/cache" \
   "$OCR_IMAGE" \
   /input/receipt.jpg /work --quiet >/dev/null
 echo "==> OCR done"
