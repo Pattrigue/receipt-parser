@@ -20,7 +20,7 @@ SCHEMA: dict[str, Any] = {
                     "name": {"type": "string"},
                     "price": {"type": "number"},
                     "quantity": {"type": "number"},
-                    "discount": {"type": "number"},
+                    "discount": {"type": "number", "minimum": 0},
                 },
                 "required": ["name", "price", "quantity"],
             },
@@ -40,7 +40,50 @@ Rules:
 - quantity is a number (use 1 if missing).
 - price is the FINAL LINE TOTAL for that entry (i.e. the total amount for that line as printed on the receipt; not unit price).
 - discount is optional; if present it must be a positive number and is the TOTAL discount associated with that same line.
+- RABAT means discount. Never output an item named RABAT.
+- If a RABAT line appears by itself, below an item, or next to an amount with a trailing minus sign, attach that amount as a positive discount to the nearest preceding real product line.
+- Treat amounts ending in "-" as discounts or negative adjustments on the receipt, but output discount as a positive number.
+- Every real product row with its own printed positive amount is a separate item, even if another product name appears on the next OCR line.
+- Do not merge adjacent products that each have their own printed line total; keep both products and both prices.
+- If a product line has a positive amount and the next OCR line starts a different product, the next product is not part of the previous item name.
+- Ignore category headers, totals, payment lines, VAT/MOMS lines, and other non-product summary rows.
+- If an item name wraps across multiple OCR lines, only combine lines that belong to the same product and do not have their own separate price.
+
+Example:
+CHAVROUX PYRAMID        25,95
+CHEASY HYTTEOST
+2 x 15,61        31,22
+RABAT             3,22-
+=> [{"name":"CHAVROUX PYRAMID","price":25.95,"quantity":1},{"name":"CHEASY HYTTEOST","price":31.22,"quantity":2,"discount":3.22}]
 """
+
+
+def normalize_items(parsed: dict[str, Any]) -> dict[str, Any]:
+    normalized: list[dict[str, Any]] = []
+
+    for raw_item in parsed.get("items", []):
+        item = dict(raw_item)
+        name = str(item.get("name", "")).strip()
+
+        if name.upper() == "RABAT":
+            amount = item.get("discount") or item.get("price") or 0
+            try:
+                discount = abs(float(amount))
+            except (TypeError, ValueError):
+                discount = 0
+
+            if normalized and discount > 0:
+                previous = normalized[-1]
+                previous["discount"] = float(previous.get("discount") or 0) + discount
+            continue
+
+        if "discount" in item:
+            item["discount"] = abs(float(item["discount"]))
+
+        normalized.append(item)
+
+    return {"items": normalized}
+
 
 def post_json(url: str, payload: dict[str, Any], timeout_s: float) -> dict[str, Any]:
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -91,7 +134,7 @@ def main() -> None:
     if not out_text:
         raise SystemExit(f"Empty response from Ollama: {resp}")
 
-    parsed = json.loads(out_text)
+    parsed = normalize_items(json.loads(out_text))
     final = json.dumps(parsed, ensure_ascii=False)
 
     output_path = args.out
