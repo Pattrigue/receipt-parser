@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+
 LLM_IMAGE="${LLM_IMAGE:-receipt-llm:latest}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-qwen2.5:14b-instruct}"
 OLLAMA_VOL="${OLLAMA_VOL:-receipt-ollama}"
+
+# shellcheck source=../lib/docker.sh
+source "$ROOT_DIR/lib/docker.sh"
 
 if [[ $# -lt 2 ]]; then
   echo "Usage: llm/run.sh path/to/ocr.txt path/to/output.json" >&2
@@ -27,12 +33,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
+ensure_docker
+check_image_gpu "$LLM_IMAGE"
+docker_gpu_args
+
 # Persistent model cache volume (so model download happens once)
 docker volume inspect "$OLLAMA_VOL" >/dev/null 2>&1 || docker volume create "$OLLAMA_VOL" >/dev/null
 
 # Start Ollama server for this run
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-docker run -d --rm --name "$CONTAINER_NAME" --gpus all \
+docker run -d --rm --name "$CONTAINER_NAME" "${DOCKER_GPU_ARGS_ARR[@]}" \
   -v "${OLLAMA_VOL}:/root/.ollama" \
   -v "${OCR_TXT_HOST}:/work/ocr.txt:ro" \
   "${LLM_IMAGE}" >/dev/null

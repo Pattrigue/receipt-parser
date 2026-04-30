@@ -6,6 +6,9 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 OCR_IMAGE="${OCR_IMAGE:-deepseek-ocr2:latest}"
 LLM_SCRIPT="${LLM_SCRIPT:-$SCRIPT_DIR/llm/run.sh}"
 
+# shellcheck source=lib/docker.sh
+source "$SCRIPT_DIR/lib/docker.sh"
+
 if [[ $# -lt 1 ]]; then
   echo "Usage: ./run.sh path/to/receipt.jpg" >&2
   exit 2
@@ -31,8 +34,13 @@ mkdir -p "$SCRIPT_DIR/.cache" "$SCRIPT_DIR/output"
 
 OUT_JSON="$SCRIPT_DIR/output/result.json"
 
+ensure_docker
+check_image_gpu "$OCR_IMAGE"
+check_image_torch_cuda "$OCR_IMAGE"
+docker_gpu_args
+
 echo "==> Running OCR (may download model on first run)..."
-docker run --rm --gpus all \
+docker run --rm "${DOCKER_GPU_ARGS_ARR[@]}" \
   -v "$IMG_HOST:/input/receipt.jpg:ro" \
   -v "$WORKDIR:/work" \
   -v "$SCRIPT_DIR/.cache:/cache" \
